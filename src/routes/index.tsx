@@ -1,8 +1,11 @@
 import { createFileRoute } from "@tanstack/react-router";
+import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { useMemo, useRef, useState } from "react";
 import { RotateCcw, Users, Activity, TrendingUp, HelpCircle } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { SocietyCanvas, type RippleEvent } from "@/components/SocietyCanvas";
+import { PowerCurve, ScenarioConsensus } from "@/components/Consensus";
+import { recordDecision } from "@/lib/telemetry";
 import {
   POWER_TIERS,
   QUOTES,
@@ -54,6 +57,23 @@ function Simulation() {
   const [ripple, setRipple] = useState<RippleEvent | null>(null);
   const [decisions, setDecisions] = useState(0);
   const rippleId = useRef(1);
+  // Server-assigned id tying this visitor's decisions into one run. Null until the
+  // first successful write, and stays null if telemetry is unavailable.
+  const runId = useRef<string | null>(null);
+  const queryClient = useQueryClient();
+
+  // The aggregate panels must not read until the write has committed, otherwise the
+  // visitor's own decision is missing from the totals they are shown.
+  const record = useMutation({
+    mutationFn: recordDecision,
+    onSuccess: (res) => {
+      runId.current = res.runId;
+    },
+    onSettled: () => {
+      void queryClient.invalidateQueries({ queryKey: ["consensus"] });
+      void queryClient.invalidateQueries({ queryKey: ["power-curve"] });
+    },
+  });
 
   const tierIndex = tierForInfluence(influence);
   const tier = POWER_TIERS[tierIndex]!;
@@ -63,15 +83,11 @@ function Simulation() {
   const scenario = SCENARIOS[scenarioIndex % SCENARIOS.length]!;
   const quote = useMemo(() => QUOTES[tierIndex]!, [tierIndex]);
 
-  // Shuffle choice order so moral valence isn't predictable by position
-  const shuffledChoices = useMemo(() => {
-    const choices = [...scenario.choices];
-    for (let i = choices.length - 1; i > 0; i--) {
-      const j = Math.floor(Math.random() * (i + 1));
-      [choices[i], choices[j]] = [choices[j], choices[i]];
-    }
-    return choices;
-  }, [scenario]);
+  // Shuffle choice order so moral valence isn't predictable by position. The
+  // shuffle is seeded from the scenario id rather than Math.random(): an unseeded
+  // shuffle produces a different order during SSR than during hydration, which
+  // React reports as a hydration mismatch and repairs by re-rendering the list.
+  const shuffledChoices = useMemo(() => shuffleForScenario(scenario), [scenario]);
 
   const nextThreshold = TIER_THRESHOLDS[tierIndex + 1];
   const floor = TIER_THRESHOLDS[tierIndex]!;
@@ -94,6 +110,22 @@ function Simulation() {
     setTotalLives((t) => t + lives);
     setDecisions((n) => n + 1);
     setRipple({ id: rippleId.current++, kind: choice.kind, intensity: power });
+
+    // Fire-and-forget: a telemetry failure must never interrupt the simulation.
+    record.mutate({
+      data: {
+        runId: runId.current,
+        scenarioId: scenario.id,
+        choiceId: choice.id,
+        kind: choice.kind,
+        tierIndex,
+        powerLevel: tier.level,
+        influenceBefore: influence,
+        stabilityBefore: stability,
+        stabilityDelta: d,
+        livesAffected: lives,
+      },
+    });
   };
 
   const next = () => {
@@ -114,6 +146,7 @@ function Simulation() {
     setDecisions(0);
     setRipple({ id: 0, kind: "virtue", intensity: 0 });
     rippleId.current = 1;
+    runId.current = null;
   };
 
   const stabilityTone =
@@ -181,9 +214,7 @@ function Simulation() {
                   <div
                     key={t.label}
                     title={t.label}
-                    className={`h-1.5 rounded-full ${
-                      i <= tierIndex ? "bg-virtue" : "bg-border"
-                    }`}
+                    className={`h-1.5 rounded-full ${i <= tierIndex ? "bg-virtue" : "bg-border"}`}
                   />
                 ))}
               </div>
@@ -220,14 +251,15 @@ function Simulation() {
                       Stability {lastDelta >= 0 ? "+" : ""}
                       {lastDelta.toFixed(2)}%
                     </span>
-                    <span
-                      className={lastInfluenceDelta >= 0 ? "text-virtue" : "text-vice"}
-                    >
+                    <span className={lastInfluenceDelta >= 0 ? "text-virtue" : "text-vice"}>
                       Influence {lastInfluenceDelta >= 0 ? "+" : ""}
                       {lastInfluenceDelta}
                     </span>
                   </div>
-                  <Button onClick={next} className="mt-4 w-full font-mono text-xs uppercase tracking-widest">
+                  <Button
+                    onClick={next}
+                    className="mt-4 w-full font-mono text-xs uppercase tracking-widest"
+                  >
                     Next situation
                   </Button>
                 </div>
@@ -298,13 +330,23 @@ function Simulation() {
               <SectionLabel>Consequence Report</SectionLabel>
               <p className="mt-3 text-sm leading-relaxed text-foreground/90">
                 {lastChoice && lastTierLabel
-                  ? lastChoice.outcome(
-                      POWER_TIERS.find((t) => t.label === lastTierLabel) ?? tier,
-                    )
+                  ? lastChoice.outcome(POWER_TIERS.find((t) => t.label === lastTierLabel) ?? tier)
                   : "No labels, no scores in advance. Decide what you would actually do — the consequences will tell you what it was worth."}
               </p>
             </section>
+
+            {lastChoice && (
+              <ScenarioConsensus
+                scenarioId={scenario.id}
+                choices={scenario.choices}
+                chosenId={lastChoice.id}
+              />
+            )}
           </div>
+        </div>
+
+        <div className="mt-5">
+          <PowerCurve />
         </div>
 
         <footer className="mt-7 border-t border-border pt-6">
@@ -321,6 +363,26 @@ function Simulation() {
       </div>
     </main>
   );
+}
+
+/** Deterministic per-scenario ordering: stable across SSR and hydration. */
+function shuffleForScenario(scenario: { id: string; choices: Choice[] }) {
+  let seed = 0;
+  for (const ch of scenario.id) seed = (seed * 31 + ch.charCodeAt(0)) >>> 0;
+  const next = () => {
+    // xorshift32 — small, dependency-free, and good enough to decorrelate order.
+    seed ^= seed << 13;
+    seed ^= seed >>> 17;
+    seed ^= seed << 5;
+    seed >>>= 0;
+    return seed / 0x1_0000_0000;
+  };
+  const choices = [...scenario.choices];
+  for (let i = choices.length - 1; i > 0; i--) {
+    const j = Math.floor(next() * (i + 1));
+    [choices[i], choices[j]] = [choices[j]!, choices[i]!];
+  }
+  return choices;
 }
 
 function SectionLabel({ children }: { children: React.ReactNode }) {
