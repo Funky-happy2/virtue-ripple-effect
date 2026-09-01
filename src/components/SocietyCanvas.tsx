@@ -16,11 +16,19 @@ type Node = {
   vx: number;
   vy: number;
   charge: number; // -1 vice .. +1 virtue
+  importance: number; // 0..1, affects base size
 };
 
 type Ripple = {
   kind: ActionKind;
   intensity: number;
+  start: number;
+};
+
+type SecondaryRipple = {
+  x: number;
+  y: number;
+  kind: ActionKind;
   start: number;
 };
 
@@ -38,18 +46,27 @@ function mix(a: RGB, b: RGB, t: number): RGB {
   ];
 }
 
-export function SocietyCanvas({ ripple }: { ripple: RippleEvent | null }) {
+export function SocietyCanvas({
+  ripple,
+  zoomLevel = 0,
+}: {
+  ripple: RippleEvent | null;
+  zoomLevel?: number;
+}) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const nodesRef = useRef<Node[]>([]);
   const ripplesRef = useRef<Ripple[]>([]);
+  const secondaryRef = useRef<SecondaryRipple[]>([]);
   const lastRippleId = useRef<number>(-1);
+  const zoomRef = useRef(zoomLevel);
+  zoomRef.current = zoomLevel;
 
   useEffect(() => {
     if (!ripple || ripple.id === lastRippleId.current) return;
     lastRippleId.current = ripple.id;
     if (ripple.id === 0) {
-      // reset signal
       ripplesRef.current = [];
+      secondaryRef.current = [];
       nodesRef.current.forEach((n) => {
         n.charge = 0;
         n.vx = 0;
@@ -85,7 +102,9 @@ export function SocietyCanvas({ ripple }: { ripple: RippleEvent | null }) {
       canvas.height = h * dpr;
       ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
 
-      const gap = Math.max(20, Math.min(w, h) / 22);
+      const z = zoomRef.current;
+      const divisions = 12 + z * 38;
+      const gap = Math.max(7, Math.min(w, h) / divisions);
       const cols = Math.floor(w / gap);
       const rows = Math.floor(h / gap);
       const offX = (w - (cols - 1) * gap) / 2;
@@ -95,7 +114,9 @@ export function SocietyCanvas({ ripple }: { ripple: RippleEvent | null }) {
         for (let c = 0; c < cols; c++) {
           const x = offX + c * gap;
           const y = offY + r * gap;
-          nodes.push({ x, y, ox: x, oy: y, vx: 0, vy: 0, charge: 0 });
+          // Most nodes small, a few large — power distribution
+          const importance = Math.pow(Math.random(), 3);
+          nodes.push({ x, y, ox: x, oy: y, vx: 0, vy: 0, charge: 0, importance });
         }
       }
       nodesRef.current = nodes;
@@ -112,36 +133,48 @@ export function SocietyCanvas({ ripple }: { ripple: RippleEvent | null }) {
       const maxR = Math.hypot(w, h) / 2;
       const ripples = ripplesRef.current;
       const nodes = nodesRef.current;
+      const z = zoomRef.current;
+      const baseSize = 2.6 - z * 1.9;
 
-      // prune finished ripples
-      ripplesRef.current = ripples.filter((r) => now - r.start < 2600 + r.intensity * 1800);
+      // prune finished ripples (shorter duration to avoid lag)
+      ripplesRef.current = ripples.filter((r) => now - r.start < 1400 + r.intensity * 800);
 
       for (const r of ripplesRef.current) {
-        const life = (now - r.start) / (1800 + r.intensity * 1600);
-        const radius = life * maxR * (0.55 + r.intensity * 0.75);
+        const duration = 1400 + r.intensity * 800;
+        const life = (now - r.start) / duration;
+        // Cap radius so the ring stays visible on screen
+        const radius = life * maxR * (0.45 + r.intensity * 0.5);
         const fade = Math.max(0, 1 - life);
         const strength = 0.25 + r.intensity * 1.6;
-        const color =
-          r.kind === "virtue" ? mix(VIRTUE, GOLD, r.intensity) : VICE;
+        // Shift towards gold at high intensity but keep it green-dominant
+        const color = r.kind === "virtue" ? mix(VIRTUE, GOLD, r.intensity * 0.6) : VICE;
 
-        // ripple ring
-        ctx.lineWidth = 1.5 + r.intensity * 8;
-        ctx.strokeStyle = `rgba(${color[0]},${color[1]},${color[2]},${fade * (0.55 + r.intensity * 0.45)})`;
+        // Main ring — the primary visual, always a ring not a filled circle
+        ctx.lineWidth = Math.max(1.5, 2 + r.intensity * 6);
+        ctx.strokeStyle = `rgba(${color[0]},${color[1]},${color[2]},${fade * (0.6 + r.intensity * 0.3)})`;
         ctx.beginPath();
         ctx.arc(cx, cy, Math.max(1, radius), 0, Math.PI * 2);
         ctx.stroke();
 
-        if (r.intensity > 0.5) {
-          const g = ctx.createRadialGradient(cx, cy, radius * 0.55, cx, cy, radius);
-          g.addColorStop(0, `rgba(${color[0]},${color[1]},${color[2]},0)`);
-          g.addColorStop(1, `rgba(${color[0]},${color[1]},${color[2]},${fade * 0.3 * r.intensity})`);
-          ctx.fillStyle = g;
+        // Trailing ring 1
+        if (radius > 15) {
+          ctx.lineWidth = Math.max(1, 1 + r.intensity * 3);
+          ctx.strokeStyle = `rgba(${color[0]},${color[1]},${color[2]},${fade * 0.35})`;
           ctx.beginPath();
-          ctx.arc(cx, cy, radius, 0, Math.PI * 2);
-          ctx.fill();
+          ctx.arc(cx, cy, Math.max(1, radius * 0.82), 0, Math.PI * 2);
+          ctx.stroke();
         }
 
-        // push nodes at the wavefront
+        // Trailing ring 2
+        if (radius > 30) {
+          ctx.lineWidth = Math.max(0.8, 0.8 + r.intensity * 2);
+          ctx.strokeStyle = `rgba(${color[0]},${color[1]},${color[2]},${fade * 0.2})`;
+          ctx.beginPath();
+          ctx.arc(cx, cy, Math.max(1, radius * 0.65), 0, Math.PI * 2);
+          ctx.stroke();
+        }
+
+        // push nodes at the wavefront + spawn secondary ripples
         for (const n of nodes) {
           const dx = n.ox - cx;
           const dy = n.oy - cy;
@@ -159,6 +192,57 @@ export function SocietyCanvas({ ripple }: { ripple: RippleEvent | null }) {
             }
             const target = r.kind === "virtue" ? 1 : -1;
             n.charge += (target - n.charge) * Math.min(1, f * 0.5);
+
+            // Spawn secondary ripple from important charged nodes (cascading effect)
+            if (
+              life < 0.7 &&
+              secondaryRef.current.length < 25 &&
+              n.importance > 0.4 &&
+              Math.abs(n.charge) > 0.2 &&
+              Math.random() < 0.004
+            ) {
+              secondaryRef.current.push({
+                x: n.ox,
+                y: n.oy,
+                kind: r.kind,
+                start: now + 80 + Math.random() * 250,
+              });
+            }
+          }
+        }
+      }
+
+      // Render secondary ripples (cascading effect — people affect others)
+      const secondary = secondaryRef.current;
+      secondaryRef.current = secondary.filter((r) => now < r.start + 700);
+      for (const r of secondaryRef.current) {
+        if (now < r.start) continue;
+        const life = (now - r.start) / 700;
+        if (life >= 1) continue;
+        const radius = life * 35;
+        const fade = Math.max(0, 1 - life);
+        const color = r.kind === "virtue" ? VIRTUE : VICE;
+
+        ctx.lineWidth = 1;
+        ctx.strokeStyle = `rgba(${color[0]},${color[1]},${color[2]},${fade * 0.4})`;
+        ctx.beginPath();
+        ctx.arc(r.x, r.y, Math.max(1, radius), 0, Math.PI * 2);
+        ctx.stroke();
+
+        // Small node push for nearby nodes
+        for (const n of nodes) {
+          const dx = n.ox - r.x;
+          const dy = n.oy - r.y;
+          const d = Math.hypot(dx, dy);
+          if (d > radius + 12 || d < 1) continue;
+          const band = Math.abs(d - radius);
+          if (band < 10) {
+            const f = (1 - band / 10) * fade * 0.12;
+            const dir = r.kind === "virtue" ? 1 : -1;
+            n.vx += (dx / d) * f * dir;
+            n.vy += (dy / d) * f * dir;
+            const target = r.kind === "virtue" ? 1 : -1;
+            n.charge += (target - n.charge) * Math.min(1, f * 0.3);
           }
         }
       }
@@ -178,7 +262,8 @@ export function SocietyCanvas({ ripple }: { ripple: RippleEvent | null }) {
         const col =
           c >= 0 ? mix(base, VIRTUE, Math.min(1, c)) : mix(base, VICE, Math.min(1, -c));
         const a = 0.45 + Math.min(0.55, Math.abs(c) * 0.55);
-        const size = 1.3 + Math.abs(c) * 2.2;
+        // Important nodes are bigger
+        const size = Math.max(0.5, baseSize * (0.4 + n.importance * 1.6) + Math.abs(c) * 2.2);
         ctx.fillStyle = `rgba(${col[0] | 0},${col[1] | 0},${col[2] | 0},${a})`;
         ctx.beginPath();
         ctx.arc(n.x, n.y, size, 0, Math.PI * 2);
@@ -210,7 +295,7 @@ export function SocietyCanvas({ ripple }: { ripple: RippleEvent | null }) {
       cancelAnimationFrame(raf);
       ro.disconnect();
     };
-  }, []);
+  }, [zoomLevel]);
 
   return <canvas ref={canvasRef} className="h-full w-full" aria-hidden="true" />;
 }

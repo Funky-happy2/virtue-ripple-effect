@@ -7,14 +7,22 @@ export type PowerTier = {
 
 export const POWER_TIERS: PowerTier[] = [
   { label: "Average Citizen", level: 1, levelLabel: "1", reach: 2 },
+  { label: "Community Organiser", level: 5, levelLabel: "5", reach: 15 },
   { label: "Business Owner", level: 10, levelLabel: "10", reach: 40 },
   { label: "Local Mayor", level: 100, levelLabel: "100", reach: 1_200 },
+  { label: "Regional Governor", level: 1_000, levelLabel: "1,000", reach: 15_000 },
   { label: "National Leader", level: 10_000, levelLabel: "10,000", reach: 4_000_000 },
   {
     label: "Global CEO / Tech Titan",
     level: 1_000_000,
     levelLabel: "1,000,000",
     reach: 20_000_000,
+  },
+  {
+    label: "Planetary Steward",
+    level: 100_000_000,
+    levelLabel: "100,000,000",
+    reach: 500_000_000,
   },
 ];
 
@@ -24,9 +32,7 @@ export type EthicalAction = {
   id: string;
   label: string;
   kind: ActionKind;
-  /** base stability delta at power level 1 */
   baseStability: number;
-  /** base lives multiplier */
   weight: number;
   describe: (tier: PowerTier) => string;
 };
@@ -93,20 +99,25 @@ function article(label: string, possessive = false) {
   return possessive ? `${lower.charAt(0).toUpperCase()}${lower.slice(1)}'s` : lower;
 }
 
-/** log-scaled intensity 0..1 across the tier range */
+const MAX_LOG = Math.log10(POWER_TIERS[POWER_TIERS.length - 1]!.level);
 export function intensity(level: number) {
-  return Math.log10(level) / 6;
+  return Math.log10(level) / MAX_LOG;
 }
 
 export function livesAffected(action: EthicalAction, tier: PowerTier) {
   return Math.round(tier.reach * action.weight);
 }
 
-export function stabilityDelta(action: EthicalAction, tier: PowerTier) {
-  const t = intensity(tier.level);
-  const cap = action.kind === "virtue" ? 25 : -50;
-  const eased = Math.pow(t, 1.6);
-  return action.baseStability * (1 - eased) + cap * eased;
+export function stabilityDelta(
+  action: EthicalAction,
+  tier: PowerTier,
+  currentStability: number,
+) {
+  return choiceStability(
+    { kind: action.kind, baseStability: action.baseStability, weight: action.weight } as Choice,
+    tier,
+    currentStability,
+  );
 }
 
 export function formatCount(n: number) {
@@ -116,39 +127,22 @@ export function formatCount(n: number) {
 }
 
 export const QUOTES: { text: string; author: string }[] = [
-  {
-    text: "With great power comes great responsibility.",
-    author: "Uncle Ben, Spider-Man",
-  },
-  {
-    text: "We are what we repeatedly do. Excellence, then, is not an act but a habit.",
-    author: "Aristotle",
-  },
-  {
-    text: "The measure of a man is what he does with power.",
-    author: "Plato",
-  },
-  {
-    text: "Nearly all men can stand adversity, but few can stand power.",
-    author: "Abraham Lincoln",
-  },
-  {
-    text: "Power tends to corrupt, and absolute power corrupts absolutely.",
-    author: "Lord Acton",
-  },
+  { text: "With great power comes great responsibility.", author: "Uncle Ben, Spider-Man" },
+  { text: "We are what we repeatedly do. Excellence, then, is not an act but a habit.", author: "Aristotle" },
+  { text: "The measure of a man is what he does with power.", author: "Plato" },
+  { text: "Nearly all men can stand adversity, but few can stand power.", author: "Abraham Lincoln" },
+  { text: "The price of greatness is responsibility.", author: "Winston Churchill" },
+  { text: "Power tends to corrupt, and absolute power corrupts absolutely.", author: "Lord Acton" },
+  { text: "In a time of universal deceit, telling the truth is a revolutionary act.", author: "George Orwell" },
+  { text: "From everyone who has been given much, much will be required.", author: "Luke 12:48" },
 ];
-
-/* ---------- Situations: neutral choices, hidden moral valence ---------- */
 
 export type Choice = {
   id: string;
-  /** neutral, non-judgemental phrasing shown to the player */
   label: string;
-  /** hidden from the UI until after the choice is made */
   kind: ActionKind;
   baseStability: number;
   weight: number;
-  /** consequence narration revealed after choosing */
   outcome: (tier: PowerTier) => string;
 };
 
@@ -182,6 +176,24 @@ export const SCENARIOS: Scenario[] = [
         outcome: (t) =>
           `Silence from ${lower(t.label)} prices fairness. Once outcomes can quietly be kept, everyone assumes the game is rigged.`,
       },
+      {
+        id: "quiet-fix",
+        label: "Quietly correct it later, but only if asked",
+        kind: "vice",
+        baseStability: -0.2,
+        weight: 0.8,
+        outcome: (t) =>
+          `${title(t.label)} waits to be caught before acting. Integrity that depends on discovery isn't really integrity — it's risk management.`,
+      },
+      {
+        id: "allies",
+        label: "Report it, but only to your allies — keep rivals in the dark",
+        kind: "vice",
+        baseStability: -0.12,
+        weight: 0.5,
+        outcome: (t) =>
+          `${title(t.label)} turns honesty into a weapon. Truth shared selectively becomes just another form of leverage.`,
+      },
     ],
   },
   {
@@ -206,6 +218,24 @@ export const SCENARIOS: Scenario[] = [
         weight: 1.1,
         outcome: (t) =>
           `${title(t.label)} starves the system it depends on. Scarcity becomes manufactured, and desperation compounds faster than the stockpile.`,
+      },
+      {
+        id: "sell-fair",
+        label: "Sell at a fair price rather than give it away",
+        kind: "virtue",
+        baseStability: 0.05,
+        weight: 0.7,
+        outcome: (t) =>
+          `${title(t.label)} meets the market halfway. It helps — but extracting payment from the desperate still costs goodwill.`,
+      },
+      {
+        id: "publicise",
+        label: "Donate the surplus publicly and make sure everyone knows",
+        kind: "virtue",
+        baseStability: 0.03,
+        weight: 0.5,
+        outcome: (t) =>
+          `${title(t.label)} gives generously — and loudly. The help is real, but the spectacle costs the gift some of its meaning.`,
       },
     ],
   },
@@ -232,6 +262,24 @@ export const SCENARIOS: Scenario[] = [
         outcome: (t) =>
           `${title(t.label)} lets the weakest carry the downside. Everyone learns exactly how much protection they can expect: none.`,
       },
+      {
+        id: "terms",
+        label: "Offer to help, but on terms that benefit you",
+        kind: "vice",
+        baseStability: -0.18,
+        weight: 0.9,
+        outcome: (t) =>
+          `${title(t.label)} turns protection into a transaction. The vulnerable are helped — but now they owe, and owing to power is its own kind of exposure.`,
+      },
+      {
+        id: "walk-away",
+        label: "Do nothing — it's not your responsibility",
+        kind: "vice",
+        baseStability: -0.1,
+        weight: 0.5,
+        outcome: (t) =>
+          `${title(t.label)} walks past. The risk falls, the vulnerable fall, and the distance between power and consequence grows by one more step.`,
+      },
     ],
   },
   {
@@ -256,6 +304,24 @@ export const SCENARIOS: Scenario[] = [
         weight: 1.5,
         outcome: (t) =>
           `The convenient story spreads from ${lower(t.label)}. Trust in shared reality erodes — people stop believing true things, not just false ones.`,
+      },
+      {
+        id: "neither",
+        label: "Say nothing and let others decide what happened",
+        kind: "vice",
+        baseStability: -0.15,
+        weight: 0.6,
+        outcome: (t) =>
+          `${title(t.label)} abdicates the truth. In the vacuum, the loudest voice wins — and it is rarely the most honest one.`,
+      },
+      {
+        id: "both-versions",
+        label: "Publish both versions and let people judge for themselves",
+        kind: "virtue",
+        baseStability: 0.07,
+        weight: 0.8,
+        outcome: (t) =>
+          `${title(t.label)} refuses to curate. People are trusted with the full picture — and trust, once given, tends to be returned.`,
       },
     ],
   },
@@ -282,6 +348,153 @@ export const SCENARIOS: Scenario[] = [
         outcome: (t) =>
           `The arrangement is accepted by ${lower(t.label)}. Fairness now has a price, and everyone can guess it.`,
       },
+      {
+        id: "disclose-accept",
+        label: "Accept it, but publicly disclose the arrangement",
+        kind: "virtue",
+        baseStability: 0.04,
+        weight: 0.6,
+        outcome: (t) =>
+          `${title(t.label)} is transparent about the conflict. Disclosure blunts the corruption — but the arrangement still bends the outcome.`,
+      },
+      {
+        id: "decline-warm",
+        label: "Quietly decline but keep the relationship warm for later",
+        kind: "vice",
+        baseStability: -0.08,
+        weight: 0.5,
+        outcome: (t) =>
+          `${title(t.label)} declines the bribe but banks the connection. The offer is refused — but the door is left ajar, and everyone knows it.`,
+      },
+    ],
+  },
+  {
+    id: "whistle",
+    situation:
+      "You discover a systemic problem that, if exposed, will disrupt many lives but prevent future harm.",
+    choices: [
+      {
+        id: "expose",
+        label: "Expose the problem and accept the disruption",
+        kind: "virtue",
+        baseStability: 0.15,
+        weight: 1.3,
+        outcome: (t) =>
+          `${title(t.label)} chooses short-term pain for long-term safety. The disruption is real — but so are the lives spared downstream.`,
+      },
+      {
+        id: "bury",
+        label: "Bury it — the disruption isn't worth the truth",
+        kind: "vice",
+        baseStability: -0.48,
+        weight: 1.2,
+        outcome: (t) =>
+          `${title(t.label)} silences the warning. The harm continues quietly, and the next discovery will be worse.`,
+      },
+      {
+        id: "gradual",
+        label: "Work quietly to fix it from within over time",
+        kind: "virtue",
+        baseStability: 0.08,
+        weight: 0.9,
+        outcome: (t) =>
+          `${title(t.label)} chooses reform over spectacle. It is slower and riskier — but change that survives contact with power is change that lasts.`,
+      },
+      {
+        id: "leak",
+        label: "Leak it anonymously and let someone else take the heat",
+        kind: "vice",
+        baseStability: -0.2,
+        weight: 0.7,
+        outcome: (t) =>
+          `${title(t.label)} exposes the truth through a back channel. The problem surfaces — but so does the lesson that accountability is something you can outsource.`,
+      },
+    ],
+  },
+  {
+    id: "rival",
+    situation:
+      "A rival's mistake has given you an opening. You could use it to eliminate them — or let it pass.",
+    choices: [
+      {
+        id: "mercy",
+        label: "Let the mistake pass without exploiting it",
+        kind: "virtue",
+        baseStability: 0.12,
+        weight: 1.0,
+        outcome: (t) =>
+          `${title(t.label)} refuses to weaponise a mistake. Rivals notice, and the norm against ruin spreads.`,
+      },
+      {
+        id: "crush",
+        label: "Use the opening to eliminate the rival",
+        kind: "vice",
+        baseStability: -0.4,
+        weight: 1.1,
+        outcome: (t) =>
+          `${title(t.label)} destroys a rival over a mistake. Everyone learns that defeat is permanent — and fights accordingly.`,
+      },
+      {
+        id: "compete",
+        label: "Compete harder on your own merits instead",
+        kind: "virtue",
+        baseStability: 0.06,
+        weight: 0.7,
+        outcome: (t) =>
+          `${title(t.label)} ignores the opening and invests in being better. The rival survives — and so does the idea that the field is fair.`,
+      },
+      {
+        id: "negotiate",
+        label: "Use the opening to negotiate a better relationship with the rival",
+        kind: "virtue",
+        baseStability: 0.08,
+        weight: 0.8,
+        outcome: (t) =>
+          `${title(t.label)} turns weakness into diplomacy. The rival keeps their dignity, and both sides gain something neither could take by force.`,
+      },
+    ],
+  },
+  {
+    id: "crisis",
+    situation:
+      "A crisis is unfolding. You have the resources to help, but doing so means sacrificing a long-term project you've invested in heavily.",
+    choices: [
+      {
+        id: "sacrifice",
+        label: "Abandon the project and redirect everything to the crisis",
+        kind: "virtue",
+        baseStability: 0.16,
+        weight: 1.4,
+        outcome: (t) =>
+          `${title(t.label)} abandons years of work to meet the moment. The project is gone — but the people it would have served remember who showed up.`,
+      },
+      {
+        id: "abandon-crisis",
+        label: "Protect your investment and let the crisis run its course",
+        kind: "vice",
+        baseStability: -0.5,
+        weight: 1.3,
+        outcome: (t) =>
+          `${title(t.label)} guards the project while people suffer. The investment survives — but the society it was built for is diminished.`,
+      },
+      {
+        id: "partial",
+        label: "Commit partial resources — help, but keep the project alive",
+        kind: "virtue",
+        baseStability: 0.07,
+        weight: 0.9,
+        outcome: (t) =>
+          `${title(t.label)} splits the difference. Some are helped, some are not. Pragmatism saves more than heroism — until it doesn't.`,
+      },
+      {
+        id: "delegate",
+        label: "Delegate the response to subordinates and stay focused",
+        kind: "vice",
+        baseStability: -0.12,
+        weight: 0.6,
+        outcome: (t) =>
+          `${title(t.label)} treats the crisis as someone else's problem. The hierarchy absorbs it — or doesn't — and either way, the distance is noted.`,
+      },
     ],
   },
 ];
@@ -298,15 +511,26 @@ export function choiceLives(choice: Choice, tier: PowerTier) {
   return Math.round(tier.reach * choice.weight);
 }
 
-export function choiceStability(choice: Choice, tier: PowerTier) {
+export function choiceStability(
+  choice: Choice,
+  tier: PowerTier,
+  currentStability: number,
+) {
   const t = intensity(tier.level);
-  const cap = choice.kind === "virtue" ? 25 : -50;
   const eased = Math.pow(t, 1.6);
-  return choice.baseStability * (1 - eased) + cap * eased;
+
+  if (choice.kind === "virtue") {
+    const room = Math.max(0.2, (100 - currentStability) / 100);
+    const cap = 25 * room;
+    return choice.baseStability * (1 - eased) + cap * eased;
+  } else {
+    const fragility = 1 - currentStability / 100;
+    const cap = -50 * (0.4 + 0.6 * fragility);
+    return choice.baseStability * (1 - eased) + cap * eased;
+  }
 }
 
-/** influence required to reach each tier index */
-export const TIER_THRESHOLDS = [0, 3, 8, 16, 28];
+export const TIER_THRESHOLDS = [0, 4, 10, 18, 28, 42, 60, 82];
 
 export function tierForInfluence(influence: number) {
   let idx = 0;
@@ -316,7 +540,9 @@ export function tierForInfluence(influence: number) {
   return idx;
 }
 
-/** influence gained (virtue) or lost (vice) by a choice */
 export function influenceDelta(choice: Choice) {
-  return choice.kind === "virtue" ? 2 : -3;
+  if (choice.kind === "virtue") {
+    return choice.weight >= 1 ? 2 : 1;
+  }
+  return choice.weight >= 1 ? -3 : -1;
 }
