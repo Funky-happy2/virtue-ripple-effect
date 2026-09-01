@@ -162,7 +162,10 @@ function Simulation() {
                   </span>
                 </div>
               </div>
-              <div className="mt-3 grid grid-cols-5 gap-1">
+              <div
+                className="mt-3 grid gap-1"
+                style={{ gridTemplateColumns: `repeat(${POWER_TIERS.length}, 1fr)` }}
+              >
                 {POWER_TIERS.map((t, i) => (
                   <div
                     key={t.label}

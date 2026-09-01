@@ -38,11 +38,19 @@ function mix(a: RGB, b: RGB, t: number): RGB {
   ];
 }
 
-export function SocietyCanvas({ ripple }: { ripple: RippleEvent | null }) {
+export function SocietyCanvas({
+  ripple,
+  zoomLevel = 0,
+}: {
+  ripple: RippleEvent | null;
+  zoomLevel?: number;
+}) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const nodesRef = useRef<Node[]>([]);
   const ripplesRef = useRef<Ripple[]>([]);
   const lastRippleId = useRef<number>(-1);
+  const zoomRef = useRef(zoomLevel);
+  zoomRef.current = zoomLevel;
 
   useEffect(() => {
     if (!ripple || ripple.id === lastRippleId.current) return;
@@ -85,7 +93,10 @@ export function SocietyCanvas({ ripple }: { ripple: RippleEvent | null }) {
       canvas.height = h * dpr;
       ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
 
-      const gap = Math.max(20, Math.min(w, h) / 22);
+      const z = zoomRef.current;
+      // Zoom out: more divisions (denser grid) at higher influence
+      const divisions = 12 + z * 38; // 12 at tier 0 → 50 at top tier
+      const gap = Math.max(7, Math.min(w, h) / divisions);
       const cols = Math.floor(w / gap);
       const rows = Math.floor(h / gap);
       const offX = (w - (cols - 1) * gap) / 2;
@@ -112,6 +123,9 @@ export function SocietyCanvas({ ripple }: { ripple: RippleEvent | null }) {
       const maxR = Math.hypot(w, h) / 2;
       const ripples = ripplesRef.current;
       const nodes = nodesRef.current;
+      const z = zoomRef.current;
+      // Dots shrink as we zoom out (wider view of society)
+      const baseSize = 2.6 - z * 1.9; // 2.6 at tier 0 → 0.7 at top tier
 
       // prune finished ripples
       ripplesRef.current = ripples.filter((r) => now - r.start < 2600 + r.intensity * 1800);
@@ -121,15 +135,24 @@ export function SocietyCanvas({ ripple }: { ripple: RippleEvent | null }) {
         const radius = life * maxR * (0.55 + r.intensity * 0.75);
         const fade = Math.max(0, 1 - life);
         const strength = 0.25 + r.intensity * 1.6;
-        const color =
-          r.kind === "virtue" ? mix(VIRTUE, GOLD, r.intensity) : VICE;
+        const color = r.kind === "virtue" ? mix(VIRTUE, GOLD, r.intensity) : VICE;
 
-        // ripple ring
-        ctx.lineWidth = 1.5 + r.intensity * 8;
+        // ripple ring — always visible, thicker at high intensity
+        ctx.lineWidth = Math.max(1.5, 1.5 + r.intensity * 8);
         ctx.strokeStyle = `rgba(${color[0]},${color[1]},${color[2]},${fade * (0.55 + r.intensity * 0.45)})`;
         ctx.beginPath();
         ctx.arc(cx, cy, Math.max(1, radius), 0, Math.PI * 2);
         ctx.stroke();
+
+        // trailing inner ring for dramatic effect at all intensities
+        if (radius > 20) {
+          const innerR = radius * 0.72;
+          ctx.lineWidth = Math.max(1, 1 + r.intensity * 4);
+          ctx.strokeStyle = `rgba(${color[0]},${color[1]},${color[2]},${fade * 0.3 * (0.4 + r.intensity * 0.6)})`;
+          ctx.beginPath();
+          ctx.arc(cx, cy, Math.max(1, innerR), 0, Math.PI * 2);
+          ctx.stroke();
+        }
 
         if (r.intensity > 0.5) {
           const g = ctx.createRadialGradient(cx, cy, radius * 0.55, cx, cy, radius);
@@ -178,7 +201,7 @@ export function SocietyCanvas({ ripple }: { ripple: RippleEvent | null }) {
         const col =
           c >= 0 ? mix(base, VIRTUE, Math.min(1, c)) : mix(base, VICE, Math.min(1, -c));
         const a = 0.45 + Math.min(0.55, Math.abs(c) * 0.55);
-        const size = 1.3 + Math.abs(c) * 2.2;
+        const size = Math.max(0.5, baseSize + Math.abs(c) * 2.2);
         ctx.fillStyle = `rgba(${col[0] | 0},${col[1] | 0},${col[2] | 0},${a})`;
         ctx.beginPath();
         ctx.arc(n.x, n.y, size, 0, Math.PI * 2);
@@ -210,7 +233,7 @@ export function SocietyCanvas({ ripple }: { ripple: RippleEvent | null }) {
       cancelAnimationFrame(raf);
       ro.disconnect();
     };
-  }, []);
+  }, [zoomLevel]);
 
   return <canvas ref={canvasRef} className="h-full w-full" aria-hidden="true" />;
 }
