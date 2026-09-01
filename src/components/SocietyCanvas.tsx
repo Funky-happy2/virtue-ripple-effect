@@ -24,11 +24,13 @@ type Ripple = {
   start: number;
 };
 
-const VIRTUE = [124, 245, 148] as const;
-const GOLD = [245, 205, 110] as const;
-const VICE = [235, 70, 60] as const;
+type RGB = [number, number, number];
 
-function mix(a: readonly number[], b: readonly number[], t: number) {
+const VIRTUE: RGB = [124, 245, 148];
+const GOLD: RGB = [245, 205, 110];
+const VICE: RGB = [235, 70, 60];
+
+function mix(a: RGB, b: RGB, t: number): RGB {
   return [
     a[0] + (b[0] - a[0]) * t,
     a[1] + (b[1] - a[1]) * t,
