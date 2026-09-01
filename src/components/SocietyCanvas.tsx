@@ -126,7 +126,7 @@ export function SocietyCanvas({ ripple }: { ripple: RippleEvent | null }) {
 
         // ripple ring
         ctx.lineWidth = 1.5 + r.intensity * 8;
-        ctx.strokeStyle = `rgba(${color[0]},${color[1]},${color[2]},${fade * (0.35 + r.intensity * 0.5)})`;
+        ctx.strokeStyle = `rgba(${color[0]},${color[1]},${color[2]},${fade * (0.55 + r.intensity * 0.45)})`;
         ctx.beginPath();
         ctx.arc(cx, cy, Math.max(1, radius), 0, Math.PI * 2);
         ctx.stroke();
@@ -134,7 +134,7 @@ export function SocietyCanvas({ ripple }: { ripple: RippleEvent | null }) {
         if (r.intensity > 0.5) {
           const g = ctx.createRadialGradient(cx, cy, radius * 0.55, cx, cy, radius);
           g.addColorStop(0, `rgba(${color[0]},${color[1]},${color[2]},0)`);
-          g.addColorStop(1, `rgba(${color[0]},${color[1]},${color[2]},${fade * 0.16 * r.intensity})`);
+          g.addColorStop(1, `rgba(${color[0]},${color[1]},${color[2]},${fade * 0.3 * r.intensity})`);
           ctx.fillStyle = g;
           ctx.beginPath();
           ctx.arc(cx, cy, radius, 0, Math.PI * 2);
@@ -174,10 +174,10 @@ export function SocietyCanvas({ ripple }: { ripple: RippleEvent | null }) {
         n.charge *= 0.994;
 
         const c = n.charge;
-        const base: RGB = [96, 112, 130];
+        const base: RGB = [128, 148, 168];
         const col =
           c >= 0 ? mix(base, VIRTUE, Math.min(1, c)) : mix(base, VICE, Math.min(1, -c));
-        const a = 0.3 + Math.min(0.7, Math.abs(c) * 0.7);
+        const a = 0.45 + Math.min(0.55, Math.abs(c) * 0.55);
         const size = 1.3 + Math.abs(c) * 2.2;
         ctx.fillStyle = `rgba(${col[0] | 0},${col[1] | 0},${col[2] | 0},${a})`;
         ctx.beginPath();
