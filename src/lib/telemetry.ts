@@ -144,3 +144,91 @@ export const getPowerCurve = createServerFn({ method: "POST" }).handler(async ()
     { points: [], total: 0 },
   ),
 );
+
+export type BehaviourInsights = {
+  /**
+   * Virtue rate in the first few decisions of a run, split by whether that run
+   * eventually reached the upper tiers. Answers: does how you start predict
+   * whether you end up powerful?
+   */
+  earlyByOutcome: { group: "powerful" | "ordinary"; runs: number; virtueRate: number | null }[];
+  /**
+   * Virtue rate by the health of society at the moment of the decision. Answers:
+   * do people behave better or worse once things are already falling apart?
+   */
+  bySocietyState: {
+    state: "healthy" | "strained" | "failing";
+    total: number;
+    virtueRate: number | null;
+  }[];
+};
+
+const EARLY_DECISIONS = 5;
+const POWERFUL_TIER = 5;
+
+/** Cross-run reads: the two questions a single decision cannot answer on its own. */
+export const getBehaviourInsights = createServerFn({ method: "POST" }).handler(async () =>
+  withDb<BehaviourInsights>(
+    async (sql) => {
+      const [early, states] = await Promise.all([
+        sql<{ group: "powerful" | "ordinary"; runs: string; total: string; virtues: string }[]>`
+          with run_peak as (
+            select run_id, max(tier_index) as peak, count(*) as n
+            from decisions group by run_id
+          ),
+          ranked as (
+            select run_id, kind,
+                   row_number() over (partition by run_id order by id) as rn
+            from decisions
+          )
+          select case when p.peak >= ${POWERFUL_TIER} then 'powerful' else 'ordinary' end as group,
+                 count(distinct r.run_id) as runs,
+                 count(*) as total,
+                 count(*) filter (where r.kind = 'virtue') as virtues
+          from ranked r
+          join run_peak p on p.run_id = r.run_id
+          where r.rn <= ${EARLY_DECISIONS} and p.n >= ${EARLY_DECISIONS}
+          group by 1
+        `,
+        sql<{ state: "healthy" | "strained" | "failing"; total: string; virtues: string }[]>`
+          select case
+                   when stability_before >= 65 then 'healthy'
+                   when stability_before >= 35 then 'strained'
+                   else 'failing'
+                 end as state,
+                 count(*) as total,
+                 count(*) filter (where kind = 'virtue') as virtues
+          from decisions group by 1
+        `,
+      ]);
+
+      const earlyBy = new Map(early.map((r) => [r.group, r]));
+      const stateBy = new Map(states.map((r) => [r.state, r]));
+
+      return {
+        earlyByOutcome: (["powerful", "ordinary"] as const).map((group) => {
+          const row = earlyBy.get(group);
+          const total = row ? Number(row.total) : 0;
+          return {
+            group,
+            runs: row ? Number(row.runs) : 0,
+            virtueRate: total > 0 ? Number(row!.virtues) / total : null,
+          };
+        }),
+        bySocietyState: (["healthy", "strained", "failing"] as const).map((state) => {
+          const row = stateBy.get(state);
+          const total = row ? Number(row.total) : 0;
+          return {
+            state,
+            total,
+            virtueRate: total > 0 ? Number(row!.virtues) / total : null,
+          };
+        }),
+      };
+    },
+    {
+      earlyByOutcome: [],
+      bySocietyState: [],
+    },
+  ),
+);

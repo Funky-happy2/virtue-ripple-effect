@@ -20,10 +20,18 @@ act more virtuously. Bun is the local package manager; Render builds with npm.
 - Everything DB-touching goes through `withDb(fn, fallback)`. The simulation must stay
   fully playable when Postgres is unreachable — a database outage degrades the aggregate
   panels, it never takes the page down.
-- Anything rendered during SSR must be deterministic. The scenario choice order is
-  seeded from the scenario id for exactly this reason.
+- Anything rendered during SSR must be deterministic. Scenario and choice order come
+  from `seededShuffle` for exactly this reason — an unseeded shuffle renders one order
+  on the server and another on the client, which React reports as a hydration mismatch.
+- `Choice.influence` is set per choice and is deliberately NOT derived from
+  `Choice.kind`. Deriving it would lock vicious players out of the upper tiers, which
+  would make the "virtue rate by power" chart measure the scoring rule rather than
+  anyone's behaviour. `simulation.test.ts` guards this.
 
 ## Verification
+- `bun test` covers the simulation maths and the SSR determinism contract.
 - `npm run build && npm start` then `curl -sf localhost:3000/` must return 200.
+- The aggregate panels are client-fetched, so the SSR pass renders their empty state.
+  Give the page a moment after load before judging a screenshot.
 - When testing in a browser, wait for hydration before clicking — a click on the SSR
   markup before React attaches does nothing, and reads like a broken button.

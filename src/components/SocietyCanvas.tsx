@@ -39,11 +39,7 @@ const GOLD: RGB = [245, 205, 110];
 const VICE: RGB = [235, 70, 60];
 
 function mix(a: RGB, b: RGB, t: number): RGB {
-  return [
-    a[0] + (b[0] - a[0]) * t,
-    a[1] + (b[1] - a[1]) * t,
-    a[2] + (b[2] - a[2]) * t,
-  ];
+  return [a[0] + (b[0] - a[0]) * t, a[1] + (b[1] - a[1]) * t, a[2] + (b[2] - a[2]) * t];
 }
 
 export function SocietyCanvas({
@@ -259,8 +255,7 @@ export function SocietyCanvas({
 
         const c = n.charge;
         const base: RGB = [128, 148, 168];
-        const col =
-          c >= 0 ? mix(base, VIRTUE, Math.min(1, c)) : mix(base, VICE, Math.min(1, -c));
+        const col = c >= 0 ? mix(base, VIRTUE, Math.min(1, c)) : mix(base, VICE, Math.min(1, -c));
         const a = 0.45 + Math.min(0.55, Math.abs(c) * 0.55);
         // Important nodes are bigger
         const size = Math.max(0.5, baseSize * (0.4 + n.importance * 1.6) + Math.abs(c) * 2.2);

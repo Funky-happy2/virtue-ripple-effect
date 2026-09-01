@@ -4,18 +4,19 @@ import { useMemo, useRef, useState } from "react";
 import { RotateCcw, Users, Activity, TrendingUp, HelpCircle } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { SocietyCanvas, type RippleEvent } from "@/components/SocietyCanvas";
-import { PowerCurve, ScenarioConsensus } from "@/components/Consensus";
+import { BehaviourInsights, PowerCurve, ScenarioConsensus } from "@/components/Consensus";
 import { recordDecision } from "@/lib/telemetry";
 import {
   POWER_TIERS,
   QUOTES,
-  SCENARIOS,
   TIER_THRESHOLDS,
   choiceLives,
   choiceStability,
+  choicesForStep,
   formatCount,
   influenceDelta,
   intensity,
+  scenarioForStep,
   tierForInfluence,
   type Choice,
 } from "@/lib/simulation";
@@ -72,6 +73,7 @@ function Simulation() {
     onSettled: () => {
       void queryClient.invalidateQueries({ queryKey: ["consensus"] });
       void queryClient.invalidateQueries({ queryKey: ["power-curve"] });
+      void queryClient.invalidateQueries({ queryKey: ["behaviour-insights"] });
     },
   });
 
@@ -80,14 +82,17 @@ function Simulation() {
   const power = intensity(tier.level);
   const zoomLevel = tierIndex / (POWER_TIERS.length - 1);
 
-  const scenario = SCENARIOS[scenarioIndex % SCENARIOS.length]!;
+  const scenario = scenarioForStep(scenarioIndex);
   const quote = useMemo(() => QUOTES[tierIndex]!, [tierIndex]);
 
-  // Shuffle choice order so moral valence isn't predictable by position. The
-  // shuffle is seeded from the scenario id rather than Math.random(): an unseeded
-  // shuffle produces a different order during SSR than during hydration, which
-  // React reports as a hydration mismatch and repairs by re-rendering the list.
-  const shuffledChoices = useMemo(() => shuffleForScenario(scenario), [scenario]);
+  // Choice order is shuffled so moral valence isn't predictable by position, and
+  // seeded rather than random: an unseeded shuffle produces a different order during
+  // SSR than during hydration, which React reports as a mismatch and repairs by
+  // re-rendering the list.
+  const shuffledChoices = useMemo(
+    () => choicesForStep(scenario, scenarioIndex),
+    [scenario, scenarioIndex],
+  );
 
   const nextThreshold = TIER_THRESHOLDS[tierIndex + 1];
   const floor = TIER_THRESHOLDS[tierIndex]!;
@@ -345,8 +350,9 @@ function Simulation() {
           </div>
         </div>
 
-        <div className="mt-5">
+        <div className="mt-5 grid gap-5">
           <PowerCurve />
+          <BehaviourInsights />
         </div>
 
         <footer className="mt-7 border-t border-border pt-6">
@@ -363,26 +369,6 @@ function Simulation() {
       </div>
     </main>
   );
-}
-
-/** Deterministic per-scenario ordering: stable across SSR and hydration. */
-function shuffleForScenario(scenario: { id: string; choices: Choice[] }) {
-  let seed = 0;
-  for (const ch of scenario.id) seed = (seed * 31 + ch.charCodeAt(0)) >>> 0;
-  const next = () => {
-    // xorshift32 — small, dependency-free, and good enough to decorrelate order.
-    seed ^= seed << 13;
-    seed ^= seed >>> 17;
-    seed ^= seed << 5;
-    seed >>>= 0;
-    return seed / 0x1_0000_0000;
-  };
-  const choices = [...scenario.choices];
-  for (let i = choices.length - 1; i > 0; i--) {
-    const j = Math.floor(next() * (i + 1));
-    [choices[i], choices[j]] = [choices[j]!, choices[i]!];
-  }
-  return choices;
 }
 
 function SectionLabel({ children }: { children: React.ReactNode }) {

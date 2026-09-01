@@ -8,10 +8,19 @@ or "vicious", and no score is shown in advance. Only the consequences reveal wha
 your choice was worth.
 
 Every decision does two things: it moves society's stability, and it moves *your own
-influence*. Act well and you climb the power ladder, from Average Citizen through
-Local Mayor and National Leader to Planetary Steward. The higher you climb, the more
-your choices are multiplied — the same decision that touched two people now touches
-five hundred million.
+influence*. Influence is what moves you up the ladder, from Average Citizen through
+Local Mayor and National Leader to Planetary Steward — and the higher you climb, the
+more your choices are multiplied. The same decision that touched two people now
+touches five hundred million.
+
+Crucially, **influence is not a reward for virtue.** Ruthless self-interest is the
+faster climb; costly integrity can set you back. A player who takes every bribe
+reaches the top in about fourteen decisions with society in ruins. A player who does
+the right thing *visibly and competently* gets there in about twenty-four with
+society thriving. A player who sacrifices themselves at every turn stays small.
+
+That separation is deliberate. If power were awarded for goodness, the chart below
+would only ever measure its own scoring rule.
 
 ## The empirical half
 
@@ -23,6 +32,9 @@ and two panels feed it back.
   answered it, broken down by how much power *they* held at the time.
 - **Virtue rate by power** — the virtue rate at each tier of the ladder across every
   decision ever made here, with a plain-language reading of the trend.
+- **Across every run** — whether the visitors who *became* powerful behaved
+  differently in their first five decisions than those who never did, and whether
+  people act better or worse once society is already failing.
 
 ## Stack
 
@@ -61,4 +73,15 @@ so set it in the Render dashboard rather than committing it.
 | table | holds |
 | --- | --- |
 | `runs` | one row per visitor session |
-| `decisions` | one row per choice: scenario, choice, virtue/vice, power tier, stability delta, lives affected |
+| `decisions` | one row per choice: scenario, choice, virtue/vice, power tier, stability before and delta, lives affected |
+
+## Tests
+
+```sh
+bun test
+```
+
+Covers the simulation maths: tier and threshold consistency, that power amplifies a
+choice, that vice hits harder as society weakens, that stability stays inside 0..100
+under repeated application, that the deterministic shuffle is stable (the SSR
+contract), and that both a vicious and a virtuous run can reach the top tier.
