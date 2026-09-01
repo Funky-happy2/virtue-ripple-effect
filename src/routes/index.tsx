@@ -58,9 +58,20 @@ function Simulation() {
   const tierIndex = tierForInfluence(influence);
   const tier = POWER_TIERS[tierIndex]!;
   const power = intensity(tier.level);
+  const zoomLevel = tierIndex / (POWER_TIERS.length - 1);
 
   const scenario = SCENARIOS[scenarioIndex % SCENARIOS.length]!;
   const quote = useMemo(() => QUOTES[tierIndex]!, [tierIndex]);
+
+  // Shuffle choice order so moral valence isn't predictable by position
+  const shuffledChoices = useMemo(() => {
+    const choices = [...scenario.choices];
+    for (let i = choices.length - 1; i > 0; i--) {
+      const j = Math.floor(Math.random() * (i + 1));
+      [choices[i], choices[j]] = [choices[j], choices[i]];
+    }
+    return choices;
+  }, [scenario]);
 
   const nextThreshold = TIER_THRESHOLDS[tierIndex + 1];
   const floor = TIER_THRESHOLDS[tierIndex]!;
@@ -70,7 +81,7 @@ function Simulation() {
       : Math.max(0, Math.min(1, (influence - floor) / (nextThreshold - floor)));
 
   const choose = (choice: Choice) => {
-    const d = choiceStability(choice, tier);
+    const d = choiceStability(choice, tier, stability);
     const lives = choiceLives(choice, tier);
     const inf = influenceDelta(choice);
     setStability((s) => Math.max(0, Math.min(100, s + d)));
@@ -188,7 +199,7 @@ function Simulation() {
 
               {!lastChoice ? (
                 <div className="mt-4 grid gap-2">
-                  {scenario.choices.map((c) => (
+                  {shuffledChoices.map((c) => (
                     <button
                       key={c.id}
                       onClick={() => choose(c)}
@@ -229,7 +240,7 @@ function Simulation() {
             <section className="panel relative overflow-hidden">
               <div className="grid-backdrop absolute inset-0 opacity-30" />
               <div className="relative h-[400px] sm:h-[480px] lg:h-[540px]">
-                <SocietyCanvas ripple={ripple} />
+                <SocietyCanvas ripple={ripple} zoomLevel={zoomLevel} />
               </div>
               <div className="pointer-events-none absolute left-4 top-4 font-mono text-[10px] uppercase tracking-[0.28em] text-muted-foreground">
                 Society Network — {tier.label}
@@ -301,7 +312,7 @@ function Simulation() {
             Ethical Quote of the Day
           </p>
           <blockquote className="mt-2 font-display text-lg italic text-foreground/90">
-            “{quote.text}”
+            "{quote.text}"
           </blockquote>
           <cite className="mt-1 block text-xs not-italic text-muted-foreground">
             — {quote.author}

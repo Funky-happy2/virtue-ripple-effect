@@ -32,9 +32,7 @@ export type EthicalAction = {
   id: string;
   label: string;
   kind: ActionKind;
-  /** base stability delta at power level 1 */
   baseStability: number;
-  /** base lives multiplier */
   weight: number;
   describe: (tier: PowerTier) => string;
 };
@@ -101,7 +99,6 @@ function article(label: string, possessive = false) {
   return possessive ? `${lower.charAt(0).toUpperCase()}${lower.slice(1)}'s` : lower;
 }
 
-/** log-scaled intensity 0..1 across the tier range */
 const MAX_LOG = Math.log10(POWER_TIERS[POWER_TIERS.length - 1]!.level);
 export function intensity(level: number) {
   return Math.log10(level) / MAX_LOG;
@@ -130,51 +127,22 @@ export function formatCount(n: number) {
 }
 
 export const QUOTES: { text: string; author: string }[] = [
-  {
-    text: "With great power comes great responsibility.",
-    author: "Uncle Ben, Spider-Man",
-  },
-  {
-    text: "We are what we repeatedly do. Excellence, then, is not an act but a habit.",
-    author: "Aristotle",
-  },
-  {
-    text: "The measure of a man is what he does with power.",
-    author: "Plato",
-  },
-  {
-    text: "Nearly all men can stand adversity, but few can stand power.",
-    author: "Abraham Lincoln",
-  },
-  {
-    text: "The price of greatness is responsibility.",
-    author: "Winston Churchill",
-  },
-  {
-    text: "Power tends to corrupt, and absolute power corrupts absolutely.",
-    author: "Lord Acton",
-  },
-  {
-    text: "In a time of universal deceit, telling the truth is a revolutionary act.",
-    author: "George Orwell",
-  },
-  {
-    text: "From everyone who has been given much, much will be required.",
-    author: "Luke 12:48",
-  },
+  { text: "With great power comes great responsibility.", author: "Uncle Ben, Spider-Man" },
+  { text: "We are what we repeatedly do. Excellence, then, is not an act but a habit.", author: "Aristotle" },
+  { text: "The measure of a man is what he does with power.", author: "Plato" },
+  { text: "Nearly all men can stand adversity, but few can stand power.", author: "Abraham Lincoln" },
+  { text: "The price of greatness is responsibility.", author: "Winston Churchill" },
+  { text: "Power tends to corrupt, and absolute power corrupts absolutely.", author: "Lord Acton" },
+  { text: "In a time of universal deceit, telling the truth is a revolutionary act.", author: "George Orwell" },
+  { text: "From everyone who has been given much, much will be required.", author: "Luke 12:48" },
 ];
-
-/* ---------- Situations: neutral choices, hidden moral valence ---------- */
 
 export type Choice = {
   id: string;
-  /** neutral, non-judgemental phrasing shown to the player */
   label: string;
-  /** hidden from the UI until after the choice is made */
   kind: ActionKind;
   baseStability: number;
   weight: number;
-  /** consequence narration revealed after choosing */
   outcome: (tier: PowerTier) => string;
 };
 
@@ -217,6 +185,15 @@ export const SCENARIOS: Scenario[] = [
         outcome: (t) =>
           `${title(t.label)} waits to be caught before acting. Integrity that depends on discovery isn't really integrity — it's risk management.`,
       },
+      {
+        id: "allies",
+        label: "Report it, but only to your allies — keep rivals in the dark",
+        kind: "vice",
+        baseStability: -0.12,
+        weight: 0.5,
+        outcome: (t) =>
+          `${title(t.label)} turns honesty into a weapon. Truth shared selectively becomes just another form of leverage.`,
+      },
     ],
   },
   {
@@ -250,6 +227,15 @@ export const SCENARIOS: Scenario[] = [
         weight: 0.7,
         outcome: (t) =>
           `${title(t.label)} meets the market halfway. It helps — but extracting payment from the desperate still costs goodwill.`,
+      },
+      {
+        id: "publicise",
+        label: "Donate the surplus publicly and make sure everyone knows",
+        kind: "virtue",
+        baseStability: 0.03,
+        weight: 0.5,
+        outcome: (t) =>
+          `${title(t.label)} gives generously — and loudly. The help is real, but the spectacle costs the gift some of its meaning.`,
       },
     ],
   },
@@ -285,6 +271,15 @@ export const SCENARIOS: Scenario[] = [
         outcome: (t) =>
           `${title(t.label)} turns protection into a transaction. The vulnerable are helped — but now they owe, and owing to power is its own kind of exposure.`,
       },
+      {
+        id: "walk-away",
+        label: "Do nothing — it's not your responsibility",
+        kind: "vice",
+        baseStability: -0.1,
+        weight: 0.5,
+        outcome: (t) =>
+          `${title(t.label)} walks past. The risk falls, the vulnerable fall, and the distance between power and consequence grows by one more step.`,
+      },
     ],
   },
   {
@@ -318,6 +313,15 @@ export const SCENARIOS: Scenario[] = [
         weight: 0.6,
         outcome: (t) =>
           `${title(t.label)} abdicates the truth. In the vacuum, the loudest voice wins — and it is rarely the most honest one.`,
+      },
+      {
+        id: "both-versions",
+        label: "Publish both versions and let people judge for themselves",
+        kind: "virtue",
+        baseStability: 0.07,
+        weight: 0.8,
+        outcome: (t) =>
+          `${title(t.label)} refuses to curate. People are trusted with the full picture — and trust, once given, tends to be returned.`,
       },
     ],
   },
@@ -353,6 +357,15 @@ export const SCENARIOS: Scenario[] = [
         outcome: (t) =>
           `${title(t.label)} is transparent about the conflict. Disclosure blunts the corruption — but the arrangement still bends the outcome.`,
       },
+      {
+        id: "decline-warm",
+        label: "Quietly decline but keep the relationship warm for later",
+        kind: "vice",
+        baseStability: -0.08,
+        weight: 0.5,
+        outcome: (t) =>
+          `${title(t.label)} declines the bribe but banks the connection. The offer is refused — but the door is left ajar, and everyone knows it.`,
+      },
     ],
   },
   {
@@ -387,6 +400,15 @@ export const SCENARIOS: Scenario[] = [
         outcome: (t) =>
           `${title(t.label)} chooses reform over spectacle. It is slower and riskier — but change that survives contact with power is change that lasts.`,
       },
+      {
+        id: "leak",
+        label: "Leak it anonymously and let someone else take the heat",
+        kind: "vice",
+        baseStability: -0.2,
+        weight: 0.7,
+        outcome: (t) =>
+          `${title(t.label)} exposes the truth through a back channel. The problem surfaces — but so does the lesson that accountability is something you can outsource.`,
+      },
     ],
   },
   {
@@ -420,6 +442,15 @@ export const SCENARIOS: Scenario[] = [
         weight: 0.7,
         outcome: (t) =>
           `${title(t.label)} ignores the opening and invests in being better. The rival survives — and so does the idea that the field is fair.`,
+      },
+      {
+        id: "negotiate",
+        label: "Use the opening to negotiate a better relationship with the rival",
+        kind: "virtue",
+        baseStability: 0.08,
+        weight: 0.8,
+        outcome: (t) =>
+          `${title(t.label)} turns weakness into diplomacy. The rival keeps their dignity, and both sides gain something neither could take by force.`,
       },
     ],
   },
@@ -480,13 +511,6 @@ export function choiceLives(choice: Choice, tier: PowerTier) {
   return Math.round(tier.reach * choice.weight);
 }
 
-/**
- * Realistic stability model:
- *  - Virtues have diminishing returns when society is already stable
- *    (you can't improve past the ceiling).
- *  - Vices are amplified when society is fragile (vicious cycle) and
- *    buffered when society is stable (resilience).
- */
 export function choiceStability(
   choice: Choice,
   tier: PowerTier,
@@ -506,8 +530,7 @@ export function choiceStability(
   }
 }
 
-/** influence required to reach each tier index */
-export const TIER_THRESHOLDS = [0, 2, 5, 9, 14, 20, 28, 38];
+export const TIER_THRESHOLDS = [0, 4, 10, 18, 28, 42, 60, 82];
 
 export function tierForInfluence(influence: number) {
   let idx = 0;
@@ -517,7 +540,9 @@ export function tierForInfluence(influence: number) {
   return idx;
 }
 
-/** influence gained (virtue) or lost (vice) by a choice */
 export function influenceDelta(choice: Choice) {
-  return choice.kind === "virtue" ? 2 : -3;
+  if (choice.kind === "virtue") {
+    return choice.weight >= 1 ? 2 : 1;
+  }
+  return choice.weight >= 1 ? -3 : -1;
 }
