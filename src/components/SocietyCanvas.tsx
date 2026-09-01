@@ -174,7 +174,7 @@ export function SocietyCanvas({ ripple }: { ripple: RippleEvent | null }) {
         n.charge *= 0.994;
 
         const c = n.charge;
-        const base = [96, 112, 130];
+        const base: RGB = [96, 112, 130];
         const col =
           c >= 0 ? mix(base, VIRTUE, Math.min(1, c)) : mix(base, VICE, Math.min(1, -c));
         const a = 0.3 + Math.min(0.7, Math.abs(c) * 0.7);
