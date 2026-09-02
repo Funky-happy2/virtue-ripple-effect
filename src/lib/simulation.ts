@@ -941,3 +941,49 @@ export function choicesForStep(scenario: Scenario, step: number): Choice[] {
   const lap = Math.floor(step / SCENARIOS.length);
   return seededShuffle(scenario.choices, `${scenario.id}-${lap}`);
 }
+
+/**
+ * How many decisions each strategy needs to reach the top rung, playing the same
+ * way every time. Computed rather than written down so the numbers quoted on the
+ * page can never drift from the scenario table.
+ *
+ * These are the honest caveat on the "virtue rate by power" chart: the ruthless
+ * climb is roughly twice as fast, so the upper-tier bars are filled by visitors
+ * who took the paying option most of the way up. That is a selection effect, and
+ * the page has to say so rather than read the chart as "power makes people better".
+ */
+function decisionsToTopTier(pick: (scenario: Scenario) => Choice | undefined): number {
+  let influence = 0;
+  for (let step = 0; step < 500; step++) {
+    const choice = pick(scenarioForStep(step));
+    if (choice) influence = Math.max(0, influence + influenceDelta(choice));
+    if (tierForInfluence(influence) === POWER_TIERS.length - 1) return step + 1;
+  }
+  return Infinity;
+}
+
+function highestPaying(choices: readonly Choice[]): Choice | undefined {
+  return [...choices].sort((a, b) => b.influence - a.influence)[0];
+}
+
+export const CLIMB = {
+  /** Best-paying virtuous option in every situation. */
+  virtuous: decisionsToTopTier((s) => highestPaying(s.choices.filter((c) => c.kind === "virtue"))),
+  /** Best-paying option of any kind — usually, but not always, a vice. */
+  ruthless: decisionsToTopTier((s) => highestPaying(s.choices)),
+};
+
+/**
+ * What the author labelled, counted from the scenario table so the page can
+ * declare its own definition rather than presenting a value judgement as a
+ * measurement. `costly` is the number of options that lose you standing — every
+ * one of them is a virtuous one, which is the clearest statement the model makes.
+ */
+const ALL_AUTHORED = SCENARIOS.flatMap((s) => s.choices);
+
+export const LABEL_COUNTS = {
+  scenarios: SCENARIOS.length,
+  choices: ALL_AUTHORED.length,
+  virtuous: ALL_AUTHORED.filter((c) => c.kind === "virtue").length,
+  costly: ALL_AUTHORED.filter((c) => c.influence < 0).length,
+};

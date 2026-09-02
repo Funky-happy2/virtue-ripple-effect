@@ -36,6 +36,17 @@ and two panels feed it back.
   differently in their first five decisions than those who never did, and whether
   people act better or worse once society is already failing.
 
+Each panel refuses to state a finding until both sides of its comparison have enough
+behind them, reports differences in percentage points rather than percent, and says
+whether it is counting decisions or visitors. The headline chart also carries its own
+confound in plain sight: ruthlessness climbs the ladder in about fourteen decisions and
+virtue needs about twenty-four, so the upper-tier bars over-represent players who took
+whatever paid. The chart shows how people behave once they have arrived, not what
+arriving did to them.
+
+The whole decision log can be downloaded as CSV from the footer — Render's free instance
+has no durable disk, so a day's collected data needs somewhere else to live.
+
 ## Stack
 
 Vite · TanStack Start (SSR) · React 19 · Tailwind v4 · Postgres (Neon) · deployed on Render.

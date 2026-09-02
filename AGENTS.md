@@ -8,7 +8,9 @@ act more virtuously. Bun is the local package manager; Render builds with npm.
 ## Architecture
 - `src/lib/simulation.ts` — power tiers, scenarios, and the stability/influence maths. Pure, no I/O.
 - `src/components/SocietyCanvas.tsx` — the canvas ripple visualiser.
-- `src/lib/telemetry.ts` — TanStack Start server functions that read and write decisions.
+- `src/lib/telemetry.ts` — TanStack Start server functions that read and write decisions,
+  plus the CSV export (Render's free disk is not durable, so the day's data needs a way off it).
+- `src/lib/findings.ts` — pure: turns aggregate counts into the sentences under the charts.
 - `src/server/db.ts` — Postgres (Neon) connection. Server-only; `vite.config.ts` enforces
   this via `importProtection` on `**/server/**`.
 - `db/schema.sql` — idempotent schema; apply with `npm run db:migrate`.
@@ -27,6 +29,14 @@ act more virtuously. Bun is the local package manager; Render builds with npm.
   `Choice.kind`. Deriving it would lock vicious players out of the upper tiers, which
   would make the "virtue rate by power" chart measure the scoring rule rather than
   anyone's behaviour. `simulation.test.ts` guards this.
+- No chart caption is written in JSX. Every reading goes through `findings.ts`, which
+  enforces three rules the page got wrong before: a difference of two rates is reported
+  in **percentage points** (74% vs 50% is 24 points, not "24% more"), nothing is claimed
+  until both sides of a comparison clear `MIN_DECISIONS`/`MIN_RUNS` (a `total > 0` guard
+  let one visitor rewrite the headline), and every count names its unit — `n` is
+  decisions, and one visitor contributes a whole lap of them.
+- Figures quoted on the page about the game itself (`CLIMB`, `LABEL_COUNTS`) are computed
+  from the scenario table, never typed into the markup, so they cannot drift from it.
 
 ## Verification
 - `bun test` covers the simulation maths and the SSR determinism contract.

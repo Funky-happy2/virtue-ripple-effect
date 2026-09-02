@@ -1,6 +1,8 @@
 import { describe, expect, test } from "bun:test";
 
 import {
+  CLIMB,
+  LABEL_COUNTS,
   POWER_TIERS,
   SCENARIOS,
   TIER_THRESHOLDS,
@@ -221,5 +223,29 @@ describe("formatCount", () => {
     expect(formatCount(15_000)).toBe("15K");
     expect(formatCount(1_500_000)).toBe("1.5M");
     expect(formatCount(20_000_000)).toBe("20M");
+  });
+});
+
+describe("the numbers the page quotes about itself", () => {
+  // These appear in the caveat under the headline chart. Computing them from the
+  // scenario table rather than typing them into the JSX is what stops the page
+  // from quoting a figure the game no longer plays by.
+  test("the ruthless climb is materially faster than the virtuous one", () => {
+    expect(CLIMB.virtuous).toBeFinite();
+    expect(CLIMB.ruthless).toBeFinite();
+    expect(CLIMB.virtuous).toBeGreaterThan(CLIMB.ruthless);
+  });
+
+  test("label counts match the authored scenarios", () => {
+    expect(LABEL_COUNTS.scenarios).toBe(SCENARIOS.length);
+    expect(LABEL_COUNTS.choices).toBe(ALL_CHOICES.length);
+    expect(LABEL_COUNTS.virtuous).toBe(ALL_CHOICES.filter((c) => c.kind === "virtue").length);
+  });
+
+  test("every option that costs standing is a virtuous one", () => {
+    const costly = ALL_CHOICES.filter((c) => c.influence < 0);
+    expect(costly.length).toBe(LABEL_COUNTS.costly);
+    expect(costly.length).toBeGreaterThan(0);
+    expect(costly.every((c) => c.kind === "virtue")).toBe(true);
   });
 });

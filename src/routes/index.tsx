@@ -1,11 +1,17 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { useMemo, useRef, useState } from "react";
-import { RotateCcw, Users, Activity, TrendingUp, HelpCircle } from "lucide-react";
+import { RotateCcw, Users, Activity, TrendingUp, HelpCircle, Download } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { SocietyCanvas, type RippleEvent } from "@/components/SocietyCanvas";
-import { BehaviourInsights, PowerCurve, ScenarioConsensus } from "@/components/Consensus";
-import { recordDecision } from "@/lib/telemetry";
+import {
+  BehaviourInsights,
+  MethodNote,
+  PowerCurve,
+  ScenarioConsensus,
+} from "@/components/Consensus";
+import { getDecisionsCsv, recordDecision } from "@/lib/telemetry";
+import { formatPct, formatUnit } from "@/lib/findings";
 import {
   POWER_TIERS,
   QUOTES,
@@ -57,6 +63,7 @@ function Simulation() {
   const [lastTierLabel, setLastTierLabel] = useState<string | null>(null);
   const [ripple, setRipple] = useState<RippleEvent | null>(null);
   const [decisions, setDecisions] = useState(0);
+  const [virtuous, setVirtuous] = useState(0);
   const rippleId = useRef(1);
   // Server-assigned id tying this visitor's decisions into one run. Null until the
   // first successful write, and stays null if telemetry is unavailable.
@@ -114,6 +121,7 @@ function Simulation() {
     setLastTierLabel(tier.label);
     setTotalLives((t) => t + lives);
     setDecisions((n) => n + 1);
+    if (choice.kind === "virtue") setVirtuous((n) => n + 1);
     setRipple({ id: rippleId.current++, kind: choice.kind, intensity: power });
 
     // Fire-and-forget: a telemetry failure must never interrupt the simulation.
@@ -149,6 +157,7 @@ function Simulation() {
     setLastInfluenceDelta(0);
     setLastTierLabel(null);
     setDecisions(0);
+    setVirtuous(0);
     setRipple({ id: 0, kind: "virtue", intensity: 0 });
     rippleId.current = 1;
     runId.current = null;
@@ -171,14 +180,23 @@ function Simulation() {
             <p className="mt-2 text-sm text-muted-foreground">
               You begin as an average citizen. Power is earned, not chosen.
             </p>
+            <p className="mt-3 max-w-2xl text-sm leading-relaxed text-muted-foreground">
+              An average citizen reaches {POWER_TIERS[0]!.reach} people. A planetary steward reaches{" "}
+              {formatCount(POWER_TIERS[POWER_TIERS.length - 1]!.reach)}. In this model a wrong done
+              from the top costs about twice what the same right earns, and both are multiplied by
+              how far you can reach. That multiplier is the whole argument: virtue is not more
+              important at the top because powerful people are better — it is more important because
+              the same act is bigger.
+            </p>
           </div>
           <Button
             variant="outline"
             onClick={reset}
+            title="Clears your own run only. Nobody else's decisions are touched."
             className="gap-2 border-border bg-surface-raised font-mono text-xs uppercase tracking-widest hover:bg-accent"
           >
             <RotateCcw className="size-3.5" />
-            Reset Society
+            Start a new run
           </Button>
         </header>
 
@@ -326,7 +344,7 @@ function Simulation() {
                 </div>
                 <div className="mt-3 flex items-center justify-between font-mono text-[11px] text-muted-foreground">
                   <span>Baseline {BASELINE}%</span>
-                  <span>{decisions} decisions made</span>
+                  <span>{formatUnit(decisions, "decision")} made</span>
                 </div>
               </div>
             </section>
@@ -339,6 +357,17 @@ function Simulation() {
                   : "No labels, no scores in advance. Decide what you would actually do — the consequences will tell you what it was worth."}
               </p>
             </section>
+
+            {decisions > 0 && (
+              <RunSummary
+                tierLabel={tier.label}
+                rung={tierIndex + 1}
+                decisions={decisions}
+                virtuous={virtuous}
+                totalLives={totalLives}
+                stability={stability}
+              />
+            )}
 
             {lastChoice && (
               <ScenarioConsensus
@@ -353,6 +382,7 @@ function Simulation() {
         <div className="mt-5 grid gap-5">
           <PowerCurve />
           <BehaviourInsights />
+          <MethodNote />
         </div>
 
         <footer className="mt-7 border-t border-border pt-6">
@@ -365,9 +395,131 @@ function Simulation() {
           <cite className="mt-1 block text-xs not-italic text-muted-foreground">
             — {quote.author}
           </cite>
+
+          <div className="mt-6 flex flex-wrap items-start justify-between gap-4 border-t border-border pt-5">
+            <p className="max-w-2xl text-[11px] leading-relaxed text-muted-foreground">
+              <span className="text-foreground/80">What this is.</span> A school research project
+              asking whether people with more power should — and do — act more virtuously. Every
+              decision made here is recorded so the charts above can answer the second half of that
+              question. Nothing personal is collected: no account, no name, no cookies, no tracking.
+              A run is a random id created when you make your first choice, and it is not linked to
+              you or your device. Refreshing the page starts a new one.
+            </p>
+            <ExportButton />
+          </div>
         </footer>
       </div>
     </main>
+  );
+}
+
+/**
+ * The end-of-run card: what the visitor climbed to, what it cost, and what it
+ * touched. There is no browser storage here, so a refresh loses the run — this is
+ * the thing worth photographing before that happens.
+ */
+function RunSummary({
+  tierLabel,
+  rung,
+  decisions,
+  virtuous,
+  totalLives,
+  stability,
+}: {
+  tierLabel: string;
+  rung: number;
+  decisions: number;
+  virtuous: number;
+  totalLives: number;
+  stability: number;
+}) {
+  const share = decisions > 0 ? virtuous / decisions : 0;
+  return (
+    <section className="panel p-5">
+      <SectionLabel>Your run so far</SectionLabel>
+      <div className="mt-4 grid grid-cols-2 gap-4 sm:grid-cols-4">
+        {[
+          { label: "Reached", value: tierLabel, sub: `rung ${rung} of ${POWER_TIERS.length}` },
+          {
+            label: "Chose virtue",
+            value: formatPct(share),
+            sub: `${virtuous} of ${formatUnit(decisions, "decision")}`,
+          },
+          {
+            label: "Lives touched",
+            value: formatCount(totalLives),
+            sub: `${totalLives.toLocaleString()} people`,
+          },
+          {
+            label: "Society left at",
+            value: `${stability.toFixed(1)}%`,
+            sub: `baseline ${BASELINE}%`,
+          },
+        ].map(({ label, value, sub }) => (
+          <div key={label}>
+            <p className="font-mono text-[10px] uppercase tracking-wider text-muted-foreground">
+              {label}
+            </p>
+            <p className="tabular mt-1 font-display text-lg font-bold leading-tight text-foreground">
+              {value}
+            </p>
+            <p className="mt-0.5 text-[10px] text-muted-foreground">{sub}</p>
+          </div>
+        ))}
+      </div>
+      <p className="mt-4 text-[11px] leading-relaxed text-muted-foreground">
+        Nothing is stored in your browser, so refreshing loses this. Take a photograph of it if you
+        want to keep it.
+      </p>
+    </section>
+  );
+}
+
+/**
+ * Render's free instance has no durable disk, and a redeploy can take the
+ * collected decisions with it. This pulls the whole log down as a CSV so a day's
+ * data can be kept somewhere that survives the deployment.
+ */
+function ExportButton() {
+  const [state, setState] = useState<"idle" | "working" | "failed">("idle");
+
+  const download = async () => {
+    setState("working");
+    try {
+      const { csv, rows } = await getDecisionsCsv();
+      if (!rows) {
+        setState("failed");
+        return;
+      }
+      const url = URL.createObjectURL(new Blob([csv], { type: "text/csv;charset=utf-8" }));
+      const link = document.createElement("a");
+      link.href = url;
+      link.download = `virtue-ripple-decisions-${new Date().toISOString().slice(0, 10)}.csv`;
+      link.click();
+      URL.revokeObjectURL(url);
+      setState("idle");
+    } catch {
+      setState("failed");
+    }
+  };
+
+  return (
+    <div className="text-right">
+      <Button
+        variant="outline"
+        onClick={() => void download()}
+        disabled={state === "working"}
+        className="gap-2 border-border bg-surface-raised font-mono text-[11px] uppercase tracking-widest hover:bg-accent"
+      >
+        <Download className="size-3.5" />
+        {state === "working" ? "Preparing…" : "Download the data"}
+      </Button>
+      <p className="mt-2 text-[10px] text-muted-foreground">
+        {state === "failed"
+          ? "Nothing recorded yet, or the record is unavailable."
+          : "CSV · every decision recorded here"}
+      </p>
+    </div>
   );
 }
 
